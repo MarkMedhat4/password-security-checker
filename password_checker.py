@@ -8,7 +8,7 @@ Date: 2026
 
 import re
 from pathlib import Path
-
+import math
 
 def load_common_passwords(file_path='common_passwords.txt'):
     """
@@ -55,6 +55,98 @@ def is_common_password(password, common_passwords):
         bool: True if password is common, False otherwise
     """
     return password.lower() in common_passwords
+def calculate_entropy(password):
+    """
+    Calculate password entropy (randomness measure in bits)
+    Higher entropy = stronger password
+    
+    Args:
+        password (str): Password to analyze
+        
+    Returns:
+        float: Entropy value in bits
+    """
+    pool_size = 0
+    
+    # Determine character pool size
+    if re.search(r'[a-z]', password):
+        pool_size += 26  # lowercase letters
+    
+    if re.search(r'[A-Z]', password):
+        pool_size += 26  # uppercase letters
+    
+    if re.search(r'\d', password):
+        pool_size += 10  # digits
+    
+    if re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\\/;\'`~]', password):
+        pool_size += 33  # special characters
+    
+    # If no recognizable characters, return 0
+    if pool_size == 0:
+        return 0.0
+    
+    # Calculate entropy: log2(pool_size^length)
+    # This equals: length * log2(pool_size)
+    entropy = len(password) * math.log2(pool_size)
+    
+    return round(entropy, 2)
+
+
+def estimate_crack_time(entropy):
+    """
+    Estimate time to crack password based on entropy
+    Assumes attacker can try 1 billion (10^9) guesses per second
+    
+    Args:
+        entropy (float): Password entropy in bits
+        
+    Returns:
+        str: Human-readable time estimate
+    """
+    if entropy == 0:
+        return "Instant (0 seconds)"
+    
+    # Total possible combinations
+    total_combinations = 2 ** entropy
+    
+    # Average guesses needed (assume password is found halfway through)
+    avg_guesses = total_combinations / 2
+    
+    # Guesses per second (modern GPU: ~1 billion/sec for simple hashes)
+    guesses_per_second = 1_000_000_000
+    
+    # Time in seconds
+    seconds = avg_guesses / guesses_per_second
+    
+    # Convert to human-readable format
+    if seconds < 1:
+        return "Less than 1 second"
+    elif seconds < 60:
+        return f"{seconds:.2f} seconds"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.2f} minutes"
+    elif seconds < 86400:
+        hours = seconds / 3600
+        return f"{hours:.2f} hours"
+    elif seconds < 31536000:
+        days = seconds / 86400
+        return f"{days:.2f} days"
+    elif seconds < 31536000 * 100:
+        years = seconds / 31536000
+        return f"{years:.2f} years"
+    elif seconds < 31536000 * 1000:
+        years = seconds / 31536000
+        return f"{years:.0f} years"
+    elif seconds < 31536000 * 1000000:
+        years = seconds / 31536000
+        return f"{years/1000:.2f} thousand years"
+    elif seconds < 31536000 * 1000000000:
+        years = seconds / 31536000
+        return f"{years/1000000:.2f} million years"
+    else:
+        years = seconds / 31536000
+        return f"{years/1000000000:.2f} billion years"
 
 
 def check_password_strength(password, common_passwords=None):
@@ -87,7 +179,9 @@ def check_password_strength(password, common_passwords=None):
                 '🚨 NEVER use this password - it can be cracked instantly!',
                 '💡 Use a unique, random password instead.'
             ],
-            'is_common': True
+            'is_common': True,
+             'entropy': calculate_entropy(password),      # ← أضف
+            'crack_time': 'Instant (in breach databases)'  # ← أضف
         }
     
     # Criterion 1: Length >= 8
@@ -138,6 +232,10 @@ def check_password_strength(password, common_passwords=None):
         strength_color = "\033[92m"  # Green
     
     reset_color = "\033[0m"
+        
+    # Calculate entropy and crack time
+    entropy = calculate_entropy(password)
+    crack_time = estimate_crack_time(entropy)
     
     return {
         'password': password,
@@ -147,18 +245,43 @@ def check_password_strength(password, common_passwords=None):
         'score': score,
         'max_score': max_score,
         'feedback': feedback,
-        'is_common': False
+        'is_common': False,
+        'entropy': entropy,           # ← أضف
+        'crack_time': crack_time      # ← أضف
     }
 
-
 def print_result(result):
-    """Pretty print the analysis result"""
+    """Pretty print the analysis result with entropy information"""
     print("\n" + "="*60)
     print(f"Password Analysis for: {'*' * len(result['password'])}")
     print("="*60)
+    
+    # Strength
     print(f"\n{result['strength_color']}Strength: {result['strength']}{result['reset_color']}")
     print(f"Score: {result['score']}/{result['max_score']}")
     
+    # Entropy and crack time
+    print(f"\n📊 Security Metrics:")
+    print(f"  • Entropy: {result.get('entropy', 0):.2f} bits")
+    print(f"  • Estimated Crack Time: {result.get('crack_time', 'N/A')}")
+    
+    # Character composition
+    password = result['password']
+    composition = []
+    if re.search(r'[a-z]', password):
+        composition.append("lowercase")
+    if re.search(r'[A-Z]', password):
+        composition.append("UPPERCASE")
+    if re.search(r'\d', password):
+        composition.append("digits")
+    if re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\\/;\'`~]', password):
+        composition.append("special")
+    
+    if composition:
+        print(f"  • Character Types: {', '.join(composition)}")
+        print(f"  • Length: {len(password)} characters")
+    
+    # Feedback
     if result['feedback']:
         print("\n📋 Recommendations:")
         for tip in result['feedback']:
@@ -167,7 +290,6 @@ def print_result(result):
         print("\n✅ Excellent! Your password meets all criteria.")
     
     print("="*60 + "\n")
-
 
 def main():
     """Main function - Interactive mode"""
