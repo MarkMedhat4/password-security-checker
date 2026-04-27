@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Security Checker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Password Security Checker</h1>
+            <p class="subtitle">Check the strength of your passwords with advanced security analysis</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Input Section -->
+            <div class="input-section">
+                <div class="input-group">
+                    <input 
+                        type="password" 
+                        id="passwordInput" 
+                        placeholder="Enter password to analyze..."
+                        autocomplete="off"
+                    >
+                    <button class="toggle-btn" id="togglePassword">
+                        <span class="eye-icon">👁️</span>
+                    </button>
+                </div>
+
+                <div class="options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="checkBreaches" checked>
+                        <span>Check against breach databases (800M+ leaked passwords)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Strength Meter -->
+            <div class="strength-meter-container" id="strengthMeterContainer" style="display: none;">
+                <div class="strength-label" id="strengthLabel">Analyzing...</div>
+                <div class="strength-meter">
+                    <div class="strength-meter-fill" id="strengthMeterFill"></div>
+                </div>
+                <div class="strength-score" id="strengthScore">0/6</div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <!-- Breach Status -->
+                <div class="breach-status" id="breachStatus"></div>
+
+                <!-- Security Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Entropy</div>
+                        <div class="metric-value" id="entropyValue">0 bits</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Crack Time</div>
+                        <div class="metric-value" id="crackTimeValue">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Length</div>
+                        <div class="metric-value" id="lengthValue">0 chars</div>
+                    </div>
+                </div>
+
+                <!-- Feedback -->
+                <div class="feedback-section" id="feedbackSection"></div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Checking breach databases...</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Made with ❤️ by Commandos | Data from HaveIBeenPwned</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
