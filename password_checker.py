@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """
-Password Security Checker - v2.0
-Includes common password detection
-Author: Your Name
+Password Security Checker - v3.0
+Features:
+- Basic strength analysis (6 criteria)
+- Common password detection (10K+ database)
+- Entropy calculation
+- Crack time estimation
+- Breach detection via HaveIBeenPwned API
+
+Author: Commandos
 Date: 2026
 """
 
 import re
 from pathlib import Path
 import math
+import hashlib
+import requests
+
 
 def load_common_passwords(file_path='common_passwords.txt'):
     """
@@ -55,6 +64,8 @@ def is_common_password(password, common_passwords):
         bool: True if password is common, False otherwise
     """
     return password.lower() in common_passwords
+
+
 def calculate_entropy(password):
     """
     Calculate password entropy (randomness measure in bits)
@@ -149,13 +160,101 @@ def estimate_crack_time(entropy):
         return f"{years/1000000000:.2f} billion years"
 
 
-def check_password_strength(password, common_passwords=None):
+def check_pwned_password(password):
+    """
+    Check if password has been leaked in data breaches
+    Uses HaveIBeenPwned API with k-anonymity model
+    
+    The k-anonymity model ensures privacy:
+    1. Hash the password with SHA-1
+    2. Send only first 5 characters of hash to API
+    3. API returns all hashes starting with those 5 chars
+    4. We check locally if our full hash is in the results
+    
+    Args:
+        password (str): Password to check
+        
+    Returns:
+        dict: {
+            'pwned': bool or None (None if API error),
+            'count': int (number of times seen in breaches)
+        }
+    """
+    # Create SHA-1 hash of password
+    sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+    
+    # Split hash: first 5 chars (prefix) + rest (suffix)
+    hash_prefix = sha1_hash[:5]
+    hash_suffix = sha1_hash[5:]
+    
+    # API endpoint
+    url = f"https://api.pwnedpasswords.com/range/{hash_prefix}"
+    
+    try:
+        # Query API with timeout
+        response = requests.get(url, timeout=5)
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            # Parse response - each line is: HASH_SUFFIX:COUNT
+            hashes = response.text.splitlines()
+            
+            # Check if our hash suffix is in the response
+            for line in hashes:
+                if ':' in line:
+                    returned_suffix, count = line.split(':')
+                    if returned_suffix == hash_suffix:
+                        return {
+                            'pwned': True,
+                            'count': int(count)
+                        }
+            
+            # Hash not found in breaches
+            return {
+                'pwned': False,
+                'count': 0
+            }
+        else:
+            # API returned an error
+            return {
+                'pwned': None,
+                'count': 0,
+                'error': f'API returned status code {response.status_code}'
+            }
+    
+    except requests.exceptions.Timeout:
+        # Request timed out
+        return {
+            'pwned': None,
+            'count': 0,
+            'error': 'Request timed out'
+        }
+    
+    except requests.exceptions.RequestException as e:
+        # Other network errors
+        return {
+            'pwned': None,
+            'count': 0,
+            'error': f'Network error: {str(e)}'
+        }
+    
+    except Exception as e:
+        # Unexpected errors
+        return {
+            'pwned': None,
+            'count': 0,
+            'error': f'Unexpected error: {str(e)}'
+        }
+
+
+def check_password_strength(password, common_passwords=None, check_breaches=True):
     """
     Analyze password strength based on multiple criteria
     
     Args:
         password (str): Password to check
         common_passwords (set): Set of common passwords to check against
+        check_breaches (bool): Whether to check against breach databases
         
     Returns:
         dict: Analysis results with strength, score, and feedback
@@ -169,7 +268,7 @@ def check_password_strength(password, common_passwords=None):
         return {
             'password': password,
             'strength': '🔴 Very Weak (Common Password)',
-            'strength_color': "\033[91m",  # Red
+            'strength_color': "\033[91m",
             'reset_color': "\033[0m",
             'score': 0,
             'max_score': max_score,
@@ -180,9 +279,26 @@ def check_password_strength(password, common_passwords=None):
                 '💡 Use a unique, random password instead.'
             ],
             'is_common': True,
-             'entropy': calculate_entropy(password),      # ← أضف
-            'crack_time': 'Instant (in breach databases)'  # ← أضف
+            'entropy': calculate_entropy(password),
+            'crack_time': 'Instant (in breach databases)',
+            'breach_check': {'pwned': True, 'count': 'N/A (common password)'}
         }
+    
+    # BREACH CHECK: Check against HaveIBeenPwned database
+    breach_result = {'pwned': None, 'count': 0}
+    if check_breaches:
+        print("  🔍 Checking against breach databases...", end='', flush=True)
+        breach_result = check_pwned_password(password)
+        print(" Done!")
+        
+        if breach_result['pwned']:
+            # Password found in breaches - CRITICAL
+            feedback.insert(0, f"🚨 CRITICAL: This password was found in {breach_result['count']:,} data breaches!")
+            feedback.insert(1, "⚠️  This password is publicly known and should NEVER be used!")
+        elif breach_result['pwned'] is None:
+            # API error - still show other results
+            if 'error' in breach_result:
+                feedback.append(f"⚠️  Could not check breach database: {breach_result['error']}")
     
     # Criterion 1: Length >= 8
     if len(password) >= 8:
@@ -215,7 +331,7 @@ def check_password_strength(password, common_passwords=None):
         feedback.append("❌ Add numbers (0-9)")
     
     # Criterion 6: Special characters
-    if re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+    if re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\\/;\'`~]', password):
         score += 1
     else:
         feedback.append("❌ Add special characters (!@#$%^&*...)")
@@ -231,8 +347,13 @@ def check_password_strength(password, common_passwords=None):
         strength = "🟢 Strong"
         strength_color = "\033[92m"  # Green
     
+    # Override strength if password is breached
+    if breach_result.get('pwned'):
+        strength = '🔴 Compromised (Found in Breaches)'
+        strength_color = "\033[91m"
+    
     reset_color = "\033[0m"
-        
+    
     # Calculate entropy and crack time
     entropy = calculate_entropy(password)
     crack_time = estimate_crack_time(entropy)
@@ -246,12 +367,14 @@ def check_password_strength(password, common_passwords=None):
         'max_score': max_score,
         'feedback': feedback,
         'is_common': False,
-        'entropy': entropy,           # ← أضف
-        'crack_time': crack_time      # ← أضف
+        'entropy': entropy,
+        'crack_time': crack_time,
+        'breach_check': breach_result
     }
 
+
 def print_result(result):
-    """Pretty print the analysis result with entropy information"""
+    """Pretty print the analysis result with all security information"""
     print("\n" + "="*60)
     print(f"Password Analysis for: {'*' * len(result['password'])}")
     print("="*60)
@@ -259,6 +382,21 @@ def print_result(result):
     # Strength
     print(f"\n{result['strength_color']}Strength: {result['strength']}{result['reset_color']}")
     print(f"Score: {result['score']}/{result['max_score']}")
+    
+    # Breach check results
+    breach = result.get('breach_check', {})
+    if breach.get('pwned') is True:
+        print(f"\n🚨 BREACH STATUS: COMPROMISED")
+        if isinstance(breach.get('count'), int):
+            print(f"  Found in {breach['count']:,} data breaches")
+        else:
+            print(f"  {breach.get('count', 'Found in breach databases')}")
+    elif breach.get('pwned') is False:
+        print(f"\n✅ BREACH STATUS: Clean")
+        print(f"  Not found in known data breaches")
+    elif breach.get('pwned') is None and 'error' in breach:
+        print(f"\n⚠️  BREACH STATUS: Unknown")
+        print(f"  {breach.get('error', 'Could not check')}")
     
     # Entropy and crack time
     print(f"\n📊 Security Metrics:")
@@ -291,16 +429,23 @@ def print_result(result):
     
     print("="*60 + "\n")
 
+
 def main():
     """Main function - Interactive mode"""
-    print("\n🔐 Password Security Checker v2.0")
+    print("\n🔐 Password Security Checker v3.0")
     print("="*60)
-    print("Check the strength of your passwords!")
+    print("Now with HaveIBeenPwned breach detection!")
     print("Type 'quit' to exit\n")
     
     # Load common passwords once at startup
     print("📂 Loading common passwords database...")
     common_passwords = load_common_passwords('common_passwords.txt')
+    print()
+    
+    # Ask about breach checking
+    print("Enable breach detection? (checks against 800M+ leaked passwords)")
+    breach_choice = input("Check breaches? (y/n, default: y): ").strip().lower()
+    check_breaches = breach_choice != 'n'
     print()
     
     while True:
@@ -314,7 +459,7 @@ def main():
             print("⚠️  Please enter a password\n")
             continue
         
-        result = check_password_strength(password, common_passwords)
+        result = check_password_strength(password, common_passwords, check_breaches)
         print_result(result)
 
 
