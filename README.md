@@ -74,9 +74,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📧 Contact
 
-**Commandos** - [@CommandCode](https://instagram.com/commandcode)
-
-Project Link: [https://github.com/YOUR_USERNAME/password-checker](https://github.com/YOUR_USERNAME/password-checker)
+Project Link: [https://github.com/MarkMedhat4/password-security-checker](https://github.com/MarkMedhat4/password-security-checker)
 
 ---
 
